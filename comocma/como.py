@@ -500,9 +500,11 @@ class Sofomore(interfaces.OOOptimizer):
 
         if self.isarchive:
             if not self.archive:
-                self.archive = self.NDA(objective_values, self.reference_point)
+                self.archive = self.NDA(
+                    objective_values, self.reference_point, solutions
+                )
             else:
-                self.archive.add_list(objective_values)
+                self.archive.add_list(objective_values, solutions)
         self.countiter += 1
         self.countevals += len(objective_values)
 
