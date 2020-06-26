@@ -19,7 +19,9 @@ class NonDominatedList(list):
 
     def __init__(self,
                  list_of_f_tuples=None,
-                 reference_point=None):
+                 reference_point=None,
+                 solutions=None
+                 ):
         """
         elements of list_of_f_tuples not in the empirical front are pruned away
         `reference_point` is also used to compute the hypervolume, with the hv
@@ -37,11 +39,14 @@ class NonDominatedList(list):
             self.reference_point = list(reference_point)
         else:
             self.reference_point = reference_point
+
+        self.solutions = solutions
+
         self.prune()  # remove dominated entries, uses self.dominates
         self._hypervolume = None
         self._kink_points = None
 
-    def add(self, f_tuple):
+    def add(self, f_tuple, solution=None):
         """add `f_tuple` in `self` if it is not dominated in all objectives.
         """
         f_tuple = tuple(f_tuple)  # convert array to list
@@ -50,6 +55,10 @@ class NonDominatedList(list):
             self.append(f_tuple)
             self._hypervolume = None
             self._kink_points = None
+
+            if solution is not None:
+                self.solutions.append(solution)
+
         self.prune()
     
     def remove(self, f_tuple):
@@ -81,21 +90,25 @@ class NonDominatedList(list):
         list.remove(self, f_tuple)
         self._hypervolume = None
         self._kink_points = None
-        
-        
-    def add_list(self, list_of_f_tuples):
+
+
+    def add_list(self, list_of_f_tuples, solutions=None):
         """
         add list of f_tuples, not using the add method to avoid calling 
         self.prune() several times.
         """
-        for f_tuple in list_of_f_tuples:
+        for ii, f_tuple in enumerate(list_of_f_tuples):
             f_tuple = tuple(f_tuple)
             if not self.dominates(f_tuple):
                 self.append(f_tuple)
                 self._hypervolume = None
                 self._kink_points = None
-        self.prune()        
-        
+
+                if solutions is not None:
+                    self.solutions.append(solutions[ii])
+
+        self.prune()
+
     def prune(self):
         """
         remove point dominated by another one in all objectives.
@@ -111,6 +124,10 @@ class NonDominatedList(list):
                     continue
                 if self.dominates_with(idx, self[i]):
                     del self[i]
+
+                    if self.solutions:
+                        del self.solutions[i]
+
                     i -= 1
                     length -= 1
                     break
