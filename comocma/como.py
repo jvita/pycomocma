@@ -480,7 +480,7 @@ class Sofomore(interfaces.OOOptimizer):
                 offspring,
                 np.array(
                     [-float(u) for u in hypervolume_improvements]
-                ) + penalties
+                ) + penalties[start:start+len(offspring)]
             )
 
             # investigate whether `kernel` hits its stopping criteria
