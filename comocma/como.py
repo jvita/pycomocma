@@ -406,7 +406,7 @@ class Sofomore(interfaces.OOOptimizer):
 
         return res
         
-    def tell(self, solutions, objective_values):
+    def tell(self, solutions, objective_values, penalties=None):
         """
         pass objective function values to update the state variables of some 
         kernels, `self._told_indices` and eventually `self.archive`.
@@ -422,7 +422,9 @@ class Sofomore(interfaces.OOOptimizer):
             list of list of constraint values: each element is a list containing
             the values of one constraint function, that are obtained by evaluation
             on `solutions`.
-            
+        'penalties'
+            list or array of additional penalties that should be applied to the
+            solutions (e.g. ridge/lasso or problem-specific penalties)
 
         Details
         -------
@@ -446,6 +448,11 @@ class Sofomore(interfaces.OOOptimizer):
         
         objective_values = np.asarray(objective_values).tolist()
 
+        if penalties is None:
+            penalties = np.zeros(len(objective_values))
+
+        penalties = np.array(penalties)
+
         for i in range(len(self._told_indices)):
             self.kernels[self._told_indices[i]].objective_values = objective_values[i]
         
@@ -468,8 +475,14 @@ class Sofomore(interfaces.OOOptimizer):
                 #   if self.indicator_front.hypervolume_improvement(kernel.objective_values) <= 0:  # kernel.fit.median0 >= 0 is the same
                 #       kernel.stop(reset='tolfunrel')  # to be implemented
                 kernel.fit.median0 = None
-            kernel.tell(offspring, [-float(u) for u in hypervolume_improvements])
-            
+
+            kernel.tell(
+                offspring,
+                np.array(
+                    [-float(u) for u in hypervolume_improvements]
+                ) + penalties
+            )
+
             # investigate whether `kernel` hits its stopping criteria
             if kernel.stop():
                 self._active_indices.remove(ikernel) # ikernel must be in `_active_indices`
@@ -501,10 +514,13 @@ class Sofomore(interfaces.OOOptimizer):
         if self.isarchive:
             if not self.archive:
                 self.archive = self.NDA(
-                    objective_values, self.reference_point, solutions
+                    objective_values, self.reference_point,
+                    solutions=solutions.tolist()
                 )
             else:
-                self.archive.add_list(objective_values, solutions)
+                self.archive.add_list(
+                    objective_values, solutions=solutions.tolist()
+                )
         self.countiter += 1
         self.countevals += len(objective_values)
 
