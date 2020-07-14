@@ -241,7 +241,15 @@ class Sofomore(interfaces.OOOptimizer):
         self.isarchive = self.opts['archive']
         if self.isarchive:
             self.archive = []
-        self.NDA = None # the callable for nondominated archiving
+
+        self.NDA = BiobjectiveNondominatedSortedList if \
+                len(reference_point) == 2 else NonDominatedList
+
+        self.indicator_front = IndicatorFront(
+            self.opts['indicator_front'],
+            NDA=self.NDA
+        )
+
         self.indicator_front = IndicatorFront(self.opts['indicator_front'])
         self.offspring = []
         self._told_indices = range(len(self))
