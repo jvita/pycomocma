@@ -8,3 +8,5 @@ comocma/.DS_Store
 __pycache__
 cma_kernels
 outsofomore
+
+*.swp
