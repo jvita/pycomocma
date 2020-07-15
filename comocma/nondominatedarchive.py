@@ -113,9 +113,17 @@ class NonDominatedList(list):
         """
         remove point dominated by another one in all objectives.
         """
-        for f_tuple in self:
+
+        del_indices = []
+        for i, f_tuple in enumerate(self):
             if not self.in_domain(f_tuple):
                 list.remove(self, f_tuple)
+                del_indices.append(i)
+
+        if self.solutions is not None:
+            for i in del_indices[::-1]:
+                del self.solutions[i]
+
         i = 0
         length = len(self)
         while i < length:
@@ -132,8 +140,8 @@ class NonDominatedList(list):
                     length -= 1
                     break
             i += 1
-            
-            
+
+
     def dominates(self, f_tuple):
         """return `True` if any element of `self` dominates or is equal to `f_tuple`.
 
