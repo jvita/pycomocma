@@ -125,7 +125,7 @@ class NonDominatedList(list):
                 if self.dominates_with(idx, self[i]):
                     del self[i]
 
-                    if self.solutions:
+                    if self.solutions is not None:
                         del self.solutions[i]
 
                     i -= 1
