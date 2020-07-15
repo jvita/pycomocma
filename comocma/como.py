@@ -250,7 +250,6 @@ class Sofomore(interfaces.OOOptimizer):
             NDA=self.NDA
         )
 
-        self.indicator_front = IndicatorFront(self.opts['indicator_front'])
         self.offspring = []
         self._told_indices = range(len(self))
         
