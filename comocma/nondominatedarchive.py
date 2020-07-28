@@ -419,8 +419,8 @@ class NonDominatedList(list):
         dominating area times -1.
         """
         contribution = self.contributing_hypervolume(f_tuple)
-        assert contribution >= 0
-        if contribution:
+        # assert contribution >= 0  # removed assert because problems with Pool
+        if contribution >= 0:
             return contribution
         return -self.distance_to_pareto_front(f_tuple)
 
