@@ -468,6 +468,8 @@ class Sofomore(interfaces.OOOptimizer):
 
         penalties = np.array(penalties)
 
+        self.penalties = penalties
+
         for i in range(len(self._told_indices)):
             self.kernels[self._told_indices[i]].objective_values = objective_values[i]
         
@@ -477,6 +479,7 @@ class Sofomore(interfaces.OOOptimizer):
         start = len(self._told_indices) # position of the first offspring
         self._told_indices = []
         counter = 0
+
         for ikernel, offspring in self.offspring:
 
             self.indicator_front.set_kernel(self[ikernel], self)  # use reference_point and list_attribute
@@ -760,7 +763,7 @@ class Sofomore(interfaces.OOOptimizer):
         copy-pasted from `cma.evolution_strategy`.
         print annotation line for `disp` ()"""
         self.has_been_called = True
-        print('Iterat #Fevals   Hypervolume   axis ratios '
+        print('Iterat #Fevals   Hypervolume   Penalties     axis ratios '
              '  sigmas   min&max stds\n'+'(median)'.rjust(42) +
              '(median)'.rjust(10) + '(median)'.rjust(12))
 
@@ -789,6 +792,7 @@ class Sofomore(interfaces.OOOptimizer):
                     print(' '.join((repr(self.countiter).rjust(6),
                                     repr(self.countevals).rjust(6),
                                     '%.15e' % (self.pareto_front_cut.hypervolume),
+                                    '%.15e' % (np.average(self.penalties)),
                                     '%4.1e' % (np.median([kernel.D.max() / kernel.D.min()
                                                if not kernel.opts['CMA_diagonal'] or kernel.countiter > kernel.opts['CMA_diagonal']
                                                else max(kernel.sigma_vec*1) / min(kernel.sigma_vec*1) \
