@@ -26,6 +26,7 @@ import warnings
 import cma.utilities.utils
 import os
 from .sofomore_logger import SofomoreDataLogger
+from multiprocessing import Pool
 
 
 class Sofomore(interfaces.OOOptimizer):
@@ -189,8 +190,9 @@ class Sofomore(interfaces.OOOptimizer):
     def __init__(self,
                list_of_solvers_instances, # usually come from a factory function 
                                          #  creating single solvers' instances
-               reference_point=None,    
+               reference_point=None,
                opts=None, # keeping an archive, decide whether we use restart, etc.
+               threads_per_node=1,  # used for parallelizing HV calculation
                ):
         """
         Initialization:
@@ -241,8 +243,15 @@ class Sofomore(interfaces.OOOptimizer):
         self.isarchive = self.opts['archive']
         if self.isarchive:
             self.archive = []
-        self.NDA = None # the callable for nondominated archiving
-        self.indicator_front = IndicatorFront(self.opts['indicator_front'])
+
+        self.NDA = BiobjectiveNondominatedSortedList if \
+                len(reference_point) == 2 else NonDominatedList
+
+        self.indicator_front = IndicatorFront(
+            self.opts['indicator_front'],
+            NDA=self.NDA
+        )
+
         self.offspring = []
         self._told_indices = range(len(self))
         
@@ -257,6 +266,12 @@ class Sofomore(interfaces.OOOptimizer):
         self._ratio_nondom_offspring_incumbent = len(self) * [0]
         
         self._last_stopped_kernel_id = None
+
+        self.pool = None
+        self.pool_len = threads_per_node
+
+        if self.pool_len > 1:
+            self.pool = Pool(threads_per_node)
 
     def __iter__(self):
         """
@@ -406,7 +421,7 @@ class Sofomore(interfaces.OOOptimizer):
 
         return res
         
-    def tell(self, solutions, objective_values):
+    def tell(self, solutions, objective_values, penalties=None):
         """
         pass objective function values to update the state variables of some 
         kernels, `self._told_indices` and eventually `self.archive`.
@@ -422,7 +437,9 @@ class Sofomore(interfaces.OOOptimizer):
             list of list of constraint values: each element is a list containing
             the values of one constraint function, that are obtained by evaluation
             on `solutions`.
-            
+        'penalties'
+            list or array of additional penalties that should be applied to the
+            solutions (e.g. ridge/lasso or problem-specific penalties)
 
         Details
         -------
@@ -446,6 +463,13 @@ class Sofomore(interfaces.OOOptimizer):
         
         objective_values = np.asarray(objective_values).tolist()
 
+        if penalties is None:
+            penalties = np.zeros(len(objective_values))
+
+        penalties = np.array(penalties)
+
+        self.penalties = penalties
+
         for i in range(len(self._told_indices)):
             self.kernels[self._told_indices[i]].objective_values = objective_values[i]
         
@@ -454,10 +478,23 @@ class Sofomore(interfaces.OOOptimizer):
             
         start = len(self._told_indices) # position of the first offspring
         self._told_indices = []
+        counter = 0
+
         for ikernel, offspring in self.offspring:
+
             self.indicator_front.set_kernel(self[ikernel], self)  # use reference_point and list_attribute
-            hypervolume_improvements = [self.indicator_front.hypervolume_improvement(point)
-                                            for point in objective_values[start:start+len(offspring)]]
+
+            if self.pool is not None:
+                hypervolume_improvements = self.pool.map(
+                    self.indicator_front.hypervolume_improvement,
+                    objective_values[start:start+len(offspring)]
+                )
+            else:
+                hypervolume_improvements = [
+                    self.indicator_front.hypervolume_improvement(point)
+                    for point in objective_values[start:start+len(offspring)]
+                ]
+
             kernel = self.kernels[ikernel]
             if kernel.fit.median0 is not None and kernel.fit.median0 >= 0:
                 # make sure the median reference comes from the right side of the empirical front
@@ -468,8 +505,14 @@ class Sofomore(interfaces.OOOptimizer):
                 #   if self.indicator_front.hypervolume_improvement(kernel.objective_values) <= 0:  # kernel.fit.median0 >= 0 is the same
                 #       kernel.stop(reset='tolfunrel')  # to be implemented
                 kernel.fit.median0 = None
-            kernel.tell(offspring, [-float(u) for u in hypervolume_improvements])
-            
+
+            kernel.tell(
+                offspring,
+                np.array(
+                    [-float(u) for u in hypervolume_improvements]
+                ) + penalties[start:start+len(offspring)]
+            )
+
             # investigate whether `kernel` hits its stopping criteria
             if kernel.stop():
                 self._active_indices.remove(ikernel) # ikernel must be in `_active_indices`
@@ -500,9 +543,14 @@ class Sofomore(interfaces.OOOptimizer):
 
         if self.isarchive:
             if not self.archive:
-                self.archive = self.NDA(objective_values, self.reference_point)
+                self.archive = self.NDA(
+                    objective_values, self.reference_point,
+                    solutions=solutions.tolist()
+                )
             else:
-                self.archive.add_list(objective_values)
+                self.archive.add_list(
+                    objective_values, solutions=solutions.tolist()
+                )
         self.countiter += 1
         self.countevals += len(objective_values)
 
@@ -715,7 +763,7 @@ class Sofomore(interfaces.OOOptimizer):
         copy-pasted from `cma.evolution_strategy`.
         print annotation line for `disp` ()"""
         self.has_been_called = True
-        print('Iterat #Fevals   Hypervolume   axis ratios '
+        print('Iterat #Fevals   Hypervolume   Penalties     axis ratios '
              '  sigmas   min&max stds\n'+'(median)'.rjust(42) +
              '(median)'.rjust(10) + '(median)'.rjust(12))
 
@@ -741,9 +789,10 @@ class Sofomore(interfaces.OOOptimizer):
             if self.countiter > 0 and (self.stop() or self.countiter < 4
                               or self.countiter % modulo < 1):
                 try:
-                    print(' '.join((repr(self.countiter).rjust(5),
+                    print(' '.join((repr(self.countiter).rjust(6),
                                     repr(self.countevals).rjust(6),
                                     '%.15e' % (self.pareto_front_cut.hypervolume),
+                                    '%.15e' % (np.average(self.penalties)),
                                     '%4.1e' % (np.median([kernel.D.max() / kernel.D.min()
                                                if not kernel.opts['CMA_diagonal'] or kernel.countiter > kernel.opts['CMA_diagonal']
                                                else max(kernel.sigma_vec*1) / min(kernel.sigma_vec*1) \
@@ -753,7 +802,7 @@ class Sofomore(interfaces.OOOptimizer):
                                                          for kernel in self.kernels])),
                                     '%6.0e' % (np.median([kernel.sigma * max(kernel.sigma_vec * kernel.dC**0.5) \
                                                           for kernel in self.kernels]))
-                                    )))
+                                    )), flush=True)
                 except AttributeError:
                     pass
                     # if self.countiter < 4:
@@ -1034,4 +1083,10 @@ def sort_odds_even(i):
     return - (i % 2)
 
 
+def __getstate__(self):
+    """Can't pickle Pool objects. __getstate__ says what to pickle"""
 
+    self_dict = self.__dict__.copy()
+    del self_dict['pool']
+
+    return self_dict
