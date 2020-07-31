@@ -3,7 +3,6 @@
 """
 """
 from .hv import HyperVolume
-from pygmo import hypervolume, hvwfg
 import itertools
 
 import numpy as np
@@ -114,19 +113,9 @@ class NonDominatedList(list):
         """
         remove point dominated by another one in all objectives.
         """
-
-        del_indices = []
-        for i, f_tuple in enumerate(self):
+        for f_tuple in self:
             if not self.in_domain(f_tuple):
-                # list.remove(self, f_tuple)
-                del_indices.append(i)
-
-        for i in del_indices[::-1]:
-            del self[i]
-
-            if self.solutions is not None:
-                del self.solutions[i]
-
+                list.remove(self, f_tuple)
         i = 0
         length = len(self)
         while i < length:
@@ -136,15 +125,15 @@ class NonDominatedList(list):
                 if self.dominates_with(idx, self[i]):
                     del self[i]
 
-                    if self.solutions is not None:
+                    if self.solutions:
                         del self.solutions[i]
 
                     i -= 1
                     length -= 1
                     break
             i += 1
-
-
+            
+            
     def dominates(self, f_tuple):
         """return `True` if any element of `self` dominates or is equal to `f_tuple`.
 
@@ -372,20 +361,8 @@ class NonDominatedList(list):
             raise ValueError("to compute the hypervolume a reference"
                              " point is needed (must be given initially)")
         if self._hypervolume is None:
-            # hv_fraction = HyperVolume(self.reference_point)
-            # self._hypervolume = hv_fraction.compute(self)
-
-            self.prune()
-
-            if len(self):
-                hv_fraction = hypervolume(self)
-                self._hypervolume = hv_fraction.compute(
-                    ref_point=self.reference_point,
-                    hv_algo=hvwfg(stop_dimension=len(self.reference_point))
-                )
-            else:
-                self._hypervolume = 0
-
+            hv_fraction = HyperVolume(self.reference_point)
+            self._hypervolume = hv_fraction.compute(self)
         return self._hypervolume
 
     def contributing_hypervolume(self, f_tuple):
@@ -396,31 +373,9 @@ class NonDominatedList(list):
         if self.reference_point is None:
             raise ValueError("to compute the hypervolume a reference"
                              " point is needed (must be given initially)")
-        # hv_fraction = HyperVolume(self.reference_point)
-        # res1 = hv_fraction.compute(self + [f_tuple])
-        # res2 = self._hypervolume or hv_fraction.compute(self)
-
-        # TODO: is there not a way to compute HVI without computing HV for self
-        # twice?
-
-        hv_fraction1 = hypervolume(self + [f_tuple])
-
-        res1 = hv_fraction1.compute(
-            ref_point=self.reference_point,
-            hv_algo=hvwfg(stop_dimension=len(self.reference_point))
-        )
-
-        if len(self) > 0:
-            hv_fraction2 = hypervolume(self)
-
-            res2 = hv_fraction2.compute(
-                ref_point=self.reference_point,
-                hv_algo=hvwfg(stop_dimension=len(self.reference_point))
-            )
-
-        else:
-            res2 = 0
-
+        hv_fraction = HyperVolume(self.reference_point)
+        res1 = hv_fraction.compute(self + [f_tuple])
+        res2 = self._hypervolume or hv_fraction.compute(self)
         return res1 - res2
         
     def distance_to_pareto_front(self, f_tuple):
@@ -455,17 +410,11 @@ class NonDominatedList(list):
         Else if not in domain, return distance to the reference point
         dominating area times -1.
         """
-
-        if not self.in_domain(f_tuple):
-            return -self.distance_to_pareto_front(f_tuple)
-        else:
-            return self.contributing_hypervolume(f_tuple)
-
-        # contribution = self.contributing_hypervolume(f_tuple)
-        # # assert contribution >= 0  # removed assert because problems with Pool
-        # if contribution >= 0:
-        #     return contribution
-        # return -self.distance_to_pareto_front(f_tuple)
+        contribution = self.contributing_hypervolume(f_tuple)
+        assert contribution >= 0
+        if contribution:
+            return contribution
+        return -self.distance_to_pareto_front(f_tuple)
 
     @staticmethod
     def _random_archive(max_size=500, p_ref_point=0.5):
