@@ -34,10 +34,22 @@ class HyperVolume:
 
     """
 
+    # Change these to change HV precision; affects speed by 3x, according to
+    # moarchiving
+
+    # hypervolume_final_float_type = Ff
+    # hypervolume_computation_float_type = Ff
+
+    hypervolume_final_float_type = float
+    hypervolume_computation_float_type = float
+
     def __init__(self, referencePoint):
         """Constructor."""
         self.referencePoint = referencePoint
         self.list = []
+
+        self.hypervolume_final_float_type = HyperVolume.hypervolume_final_float_type
+
 
 
     def compute(self, front):
@@ -66,9 +78,12 @@ class HyperVolume:
             # this way the reference point doesn't have to be explicitly used
             # in the HV computation
             for j in xrange(len(relevantPoints)):
-                relevantPoints[j] = [Ff(relevantPoints[j][i]) - Ff(referencePoint[i]) for i in xrange(dimensions)]
+                relevantPoints[j] = [
+                    self.hypervolume_final_float_type(relevantPoints[j][i])
+                    - self.hypervolume_final_float_type(referencePoint[i]) for i in xrange(dimensions)
+                ]
         self.preProcess(relevantPoints)
-        bounds = [-Ff(1.0e308)] * dimensions
+        bounds = [-self.hypervolume_final_float_type(1.0e308)] * dimensions
         hyperVolume = self.hvRecursive(dimensions - 1, len(relevantPoints), bounds)
         return hyperVolume
 
@@ -80,7 +95,7 @@ class HyperVolume:
         is [0, ..., 0]. This allows the avoidance of a few operations.
 
         """
-        hvol = Ff(0.0)
+        hvol = self.hypervolume_final_float_type(0.0)
         sentinel = self.list.sentinel
         if length == 0:
             return hvol
@@ -91,16 +106,16 @@ class HyperVolume:
         elif dimIndex == 1:
             # special case: two dimensions, end recursion
             q = sentinel.next[1]
-            h = Ff(q.cargo[0])
+            h = self.hypervolume_final_float_type(q.cargo[0])
             p = q.next[1]
             while p is not sentinel:
                 pCargo = p.cargo
-                hvol += h * (Ff(q.cargo[1]) - Ff(pCargo[1]))
-                if Ff(pCargo[0]) < h:
-                    h = Ff(pCargo[0])
+                hvol += h * (self.hypervolume_final_float_type(q.cargo[1]) - self.hypervolume_final_float_type(pCargo[1]))
+                if self.hypervolume_final_float_type(pCargo[0]) < h:
+                    h = self.hypervolume_final_float_type(pCargo[0])
                 q = p
                 p = q.next[1]
-            hvol += h * Ff(q.cargo[1])
+            hvol += h * self.hypervolume_final_float_type(q.cargo[1])
             return hvol
         else:
             remove = self.list.remove
@@ -122,11 +137,11 @@ class HyperVolume:
             qCargo = q.cargo
             qPrevDimIndex = q.prev[dimIndex]
             if length > 1:
-                hvol = Ff(qPrevDimIndex.volume[dimIndex]) + Ff(
-                        qPrevDimIndex.area[dimIndex]) * (Ff(qCargo[dimIndex]) - Ff(qPrevDimIndex.cargo[dimIndex]))
+                hvol = self.hypervolume_final_float_type(qPrevDimIndex.volume[dimIndex]) + self.hypervolume_final_float_type(
+                        qPrevDimIndex.area[dimIndex]) * (self.hypervolume_final_float_type(qCargo[dimIndex]) - self.hypervolume_final_float_type(qPrevDimIndex.cargo[dimIndex]))
             else:
-                qArea[0] = Ff(1)
-                qArea[1:dimIndex+1] = [Ff(qArea[i]) * Ff(-qCargo[i]) for i in xrange(dimIndex)]
+                qArea[0] = self.hypervolume_final_float_type(1)
+                qArea[1:dimIndex+1] = [self.hypervolume_final_float_type(qArea[i]) * self.hypervolume_final_float_type(-qCargo[i]) for i in xrange(dimIndex)]
             q.volume[dimIndex] = hvol
             if q.ignore >= dimIndex:
                 qArea[dimIndex] = qPrevDimIndex.area[dimIndex]
@@ -135,8 +150,8 @@ class HyperVolume:
                 if qArea[dimIndex] <= qPrevDimIndex.area[dimIndex]:
                     q.ignore = dimIndex
             while p is not sentinel:
-                pCargoDimIndex = Ff(p.cargo[dimIndex])
-                hvol += Ff(q.area[dimIndex]) * Ff((pCargoDimIndex - Ff(q.cargo[dimIndex])))
+                pCargoDimIndex = self.hypervolume_final_float_type(p.cargo[dimIndex])
+                hvol += self.hypervolume_final_float_type(q.area[dimIndex]) * self.hypervolume_final_float_type((pCargoDimIndex - self.hypervolume_final_float_type(q.cargo[dimIndex])))
                 bounds[dimIndex] = pCargoDimIndex
                 reinsert(p, dimIndex, bounds)
                 length += 1
@@ -144,12 +159,12 @@ class HyperVolume:
                 p = p.next[dimIndex]
                 q.volume[dimIndex] = hvol
                 if q.ignore >= dimIndex:
-                    q.area[dimIndex] = Ff(q.prev[dimIndex].area[dimIndex])
+                    q.area[dimIndex] = self.hypervolume_final_float_type(q.prev[dimIndex].area[dimIndex])
                 else:
                     q.area[dimIndex] = hvRecursive(dimIndex - 1, length, bounds)
-                    if Ff(q.area[dimIndex]) <= Ff(q.prev[dimIndex].area[dimIndex]):
+                    if self.hypervolume_final_float_type(q.area[dimIndex]) <= self.hypervolume_final_float_type(q.prev[dimIndex].area[dimIndex]):
                         q.ignore = dimIndex
-            hvol -= Ff(q.area[dimIndex]) * Ff(q.cargo[dimIndex])
+            hvol -= self.hypervolume_final_float_type(q.area[dimIndex]) * self.hypervolume_final_float_type(q.cargo[dimIndex])
             return hvol
 
 
@@ -179,7 +194,6 @@ class HyperVolume:
         nodes[:] = [node for (_, node) in decorated]
             
             
-            
 class MultiList: 
     """A special data structure needed by FonsecaHyperVolume. 
     
@@ -188,15 +202,20 @@ class MultiList:
 
     """
 
+    hypervolume_final_float_type = float
+
     class Node: 
         
         def __init__(self, numberLists, cargo=None): 
+
+            self.hypervolume_final_float_type = MultiList.hypervolume_final_float_type
+
             self.cargo = cargo 
             self.next  = [None] * numberLists
             self.prev = [None] * numberLists
             self.ignore = 0
-            self.area = [Ff(0.0)] * numberLists
-            self.volume = [Ff(0.0)] * numberLists
+            self.area = [self.hypervolume_final_float_type(0.0)] * numberLists
+            self.volume = [self.hypervolume_final_float_type(0.0)] * numberLists
     
         def __str__(self): 
             return str(self.cargo)
@@ -208,6 +227,8 @@ class MultiList:
         Builds 'numberLists' doubly linked lists.
 
         """
+        self.hypervolume_final_float_type = MultiList.hypervolume_final_float_type
+
         self.numberLists = numberLists
         self.sentinel = MultiList.Node(numberLists)
         self.sentinel.next = [self.sentinel] * numberLists
@@ -275,7 +296,7 @@ class MultiList:
             predecessor.next[i] = successor
             successor.prev[i] = predecessor  
             if bounds[i] > node.cargo[i]:
-                bounds[i] = Ff(node.cargo[i])
+                bounds[i] = self.hypervolume_final_float_type(node.cargo[i])
         return node
     
     
@@ -290,7 +311,7 @@ class MultiList:
             node.prev[i].next[i] = node
             node.next[i].prev[i] = node
             if bounds[i] > node.cargo[i]:
-                bounds[i] = Ff(node.cargo[i])
+                bounds[i] = self.hypervolume_final_float_type(node.cargo[i])
             
 
 
